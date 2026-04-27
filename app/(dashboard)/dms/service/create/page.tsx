@@ -1,23 +1,23 @@
 "use client"
 
-import { useState, useMemo, useCallback, useRef, useEffect } from "react"
+import { useState, useMemo, useCallback, useEffect } from "react"
 import Link from "next/link"
 import {
   Plus,
   Trash2,
   Car,
   User,
-  ChevronsUpDown,
-  Check,
   Wrench,
   Package,
   Save,
-  X,
   Search,
   Loader2,
   Phone,
-  Clock,
   ArrowLeft,
+  FileText,
+  Calculator,
+  ChevronRight,
+  X,
 } from "lucide-react"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -35,77 +35,176 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 
-// ============ Mock API Functions (simulate async search) ============
+// ============ Mock Data & API ============
 
-// Simulated customer database
-const mockCustomers = Array.from({ length: 500 }, (_, i) => ({
+type Customer = {
+  id: string
+  name: string
+  phone: string
+  idCard?: string
+  address?: string
+}
+
+type Vehicle = {
+  id: string
+  plate: string
+  brand: string
+  model: string
+  vin?: string
+  customerId: string
+  customerName: string
+}
+
+type ServiceItem = {
+  id: string
+  code: string
+  name: string
+  category: string
+  laborHours: number
+  laborRate: number
+}
+
+type PartItem = {
+  id: string
+  code: string
+  name: string
+  category: string
+  unit: string
+  price: number
+  stock: number
+}
+
+// Mock customers
+const mockCustomers: Customer[] = Array.from({ length: 200 }, (_, i) => ({
   id: `c${i + 1}`,
   name: ["林浩然", "陈志远", "王思颖", "赵雪", "黄海涛", "苏婉清", "张伟", "刘芳", "李强", "周敏"][i % 10] + (i > 9 ? `${Math.floor(i / 10)}` : ""),
-  phone: `1${["38", "39", "37", "36", "35", "58", "59", "86", "87", "88"][i % 10]}****${String(1000 + i).slice(-4)}`,
-  vehicles: [
-    `浙${["A", "B", "C", "D", "E", "F"][i % 6]}·${String(Math.random()).slice(2, 7)} ${["大众途观L", "奥迪A6L", "丰田凯美瑞", "比亚迪汉EV", "理想L7", "宝马X3"][i % 6]}`,
-    ...(i % 3 === 0 ? [`沪${["A", "B", "C"][i % 3]}·${String(Math.random()).slice(2, 7)} ${["奔驰GLC", "特斯拉Model Y", "蔚来ES6"][i % 3]}`] : []),
-  ],
+  phone: `1${["38", "39", "37", "36", "35", "58", "59", "86", "87", "88"][i % 10]}${String(10000000 + i * 1234).slice(-8)}`,
+  idCard: `3301${String(1980 + (i % 30))}${String(101 + (i % 28)).padStart(4, "0")}${String(1000 + i).slice(-4)}`,
+  address: `浙江省杭州市${["西湖区", "拱墅区", "滨江区", "余杭区", "萧山区"][i % 5]}某某路${100 + i}号`,
 }))
 
-const mockServiceItems = Array.from({ length: 200 }, (_, i) => ({
+// Mock vehicles
+const mockVehicles: Vehicle[] = Array.from({ length: 300 }, (_, i) => {
+  const customerIdx = i % mockCustomers.length
+  return {
+    id: `v${i + 1}`,
+    plate: `浙${["A", "B", "C", "D", "E", "F"][i % 6]}·${String(Math.random()).slice(2, 7)}`,
+    brand: ["大众", "奥迪", "丰田", "比亚迪", "理想", "宝马", "奔驰", "特斯拉", "蔚来", "本田"][i % 10],
+    model: ["途观L", "A6L", "凯美瑞", "汉EV", "L7", "X3", "GLC", "Model Y", "ES6", "雅阁"][i % 10],
+    vin: `LFV${String(Math.random()).slice(2, 18).toUpperCase()}`,
+    customerId: mockCustomers[customerIdx].id,
+    customerName: mockCustomers[customerIdx].name,
+  }
+})
+
+// Mock service items
+const mockServices: ServiceItem[] = Array.from({ length: 150 }, (_, i) => ({
   id: `s${i + 1}`,
+  code: `SVC${String(1001 + i)}`,
   name: [
     "机油更换", "机油滤清器更换", "空气滤清器更换", "空调滤清器更换",
     "刹车片更换(前)", "刹车片更换(后)", "轮胎更换", "四轮定位",
     "发动机检测", "变速箱油更换", "火花塞更换", "蓄电池检测",
-    "冷却液更换", "制动液更换", "转向助力油更换", "雨刮片更换",
-    "灯泡更换", "皮带检查", "底盘检查", "全车检测"
-  ][i % 20] + (i >= 20 ? ` (套餐${Math.floor(i / 20) + 1})` : ""),
-  laborHours: [0.5, 0.3, 0.2, 0.3, 1.0, 1.0, 0.5, 1.0, 1.5, 1.0, 0.8, 0.3, 0.5, 0.5, 0.5, 0.2, 0.2, 0.5, 1.0, 2.0][i % 20],
-  laborRate: [120, 80, 60, 80, 200, 200, 100, 180, 300, 250, 150, 60, 100, 100, 100, 50, 40, 80, 150, 350][i % 20],
+    "冷却液更换", "制动液更换", "转向助力油更换"
+  ][i % 15] + (i >= 15 ? ` #${Math.floor(i / 15) + 1}` : ""),
+  category: ["保养", "维修", "检测", "钣喷", "轮胎"][i % 5],
+  laborHours: [0.5, 0.3, 0.2, 0.3, 1.0, 1.0, 0.5, 1.0, 1.5, 1.0, 0.8, 0.3, 0.5, 0.5, 0.5][i % 15],
+  laborRate: [120, 80, 60, 80, 200, 200, 100, 180, 300, 250, 150, 60, 100, 100, 100][i % 15],
 }))
 
-const mockParts = Array.from({ length: 300 }, (_, i) => ({
+// Mock parts
+const mockParts: PartItem[] = Array.from({ length: 200 }, (_, i) => ({
   id: `p${i + 1}`,
+  code: `PRT${String(2001 + i)}`,
   name: [
     "嘉实多极护 5W-40 机油 4L", "博世机油滤清器", "曼牌空气滤清器",
     "马勒空调滤清器", "博世刹车片(前)", "博世刹车片(后)",
     "米其林轮胎 225/45R17", "防冻液 2L", "雨刮片(对)", "火花塞(4支装)",
     "NGK火花塞", "德尔福点火线圈", "博世蓄电池", "壳牌机油 5W-30",
-    "普利司通轮胎 215/55R16", "大陆轮胎 225/50R17", "ATE制动液",
-    "嘉实多变速箱油", "德尔福燃油滤清器", "博世空气流量计"
-  ][i % 20] + (i >= 20 ? ` #${Math.floor(i / 20) + 1}` : ""),
-  unit: ["桶", "个", "个", "个", "套", "套", "条", "瓶", "对", "套", "个", "个", "个", "桶", "条", "条", "瓶", "桶", "个", "个"][i % 20],
-  price: [388, 68, 128, 98, 580, 480, 780, 68, 128, 320, 45, 280, 650, 358, 620, 720, 88, 268, 158, 890][i % 20] + (i >= 20 ? i * 2 : 0),
+    "普利司通轮胎 215/55R16"
+  ][i % 15] + (i >= 15 ? ` #${Math.floor(i / 15) + 1}` : ""),
+  category: ["机油", "滤清器", "制动", "轮胎", "电器", "其他"][i % 6],
+  unit: ["桶", "个", "套", "条", "瓶", "对"][i % 6],
+  price: [388, 68, 128, 98, 580, 480, 780, 68, 128, 320, 45, 280, 650, 358, 620][i % 15] + i * 2,
+  stock: Math.floor(Math.random() * 100) + 5,
 }))
 
-// Async search functions with simulated delay
-async function searchCustomers(query: string): Promise<typeof mockCustomers> {
-  await new Promise((r) => setTimeout(r, 300)) // Simulate network delay
-  if (!query.trim()) return []
+// Async search with delay
+async function searchCustomers(query: string): Promise<Customer[]> {
+  await new Promise((r) => setTimeout(r, 300))
+  if (!query.trim()) return mockCustomers.slice(0, 30)
   const q = query.toLowerCase()
-  return mockCustomers
-    .filter((c) => c.name.toLowerCase().includes(q) || c.phone.includes(q))
-    .slice(0, 20) // Limit results
+  return mockCustomers.filter((c) => 
+    c.name.toLowerCase().includes(q) || c.phone.includes(q)
+  ).slice(0, 30)
 }
 
-async function searchServices(query: string): Promise<typeof mockServiceItems> {
+async function searchVehicles(query: string, customerId?: string): Promise<Vehicle[]> {
+  await new Promise((r) => setTimeout(r, 300))
+  let results = mockVehicles
+  if (customerId) {
+    results = results.filter((v) => v.customerId === customerId)
+  }
+  if (query.trim()) {
+    const q = query.toLowerCase()
+    results = results.filter((v) => 
+      v.plate.toLowerCase().includes(q) || 
+      v.brand.toLowerCase().includes(q) ||
+      v.model.toLowerCase().includes(q) ||
+      v.customerName.toLowerCase().includes(q)
+    )
+  }
+  return results.slice(0, 30)
+}
+
+async function searchServices(query: string, category?: string): Promise<ServiceItem[]> {
   await new Promise((r) => setTimeout(r, 200))
-  if (!query.trim()) return mockServiceItems.slice(0, 10) // Show recent/popular when empty
-  const q = query.toLowerCase()
-  return mockServiceItems.filter((s) => s.name.toLowerCase().includes(q)).slice(0, 15)
+  let results = mockServices
+  if (category && category !== "all") {
+    results = results.filter((s) => s.category === category)
+  }
+  if (query.trim()) {
+    const q = query.toLowerCase()
+    results = results.filter((s) => 
+      s.name.toLowerCase().includes(q) || s.code.toLowerCase().includes(q)
+    )
+  }
+  return results.slice(0, 30)
 }
 
-async function searchParts(query: string): Promise<typeof mockParts> {
+async function searchParts(query: string, category?: string): Promise<PartItem[]> {
   await new Promise((r) => setTimeout(r, 200))
-  if (!query.trim()) return mockParts.slice(0, 10)
-  const q = query.toLowerCase()
-  return mockParts.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 15)
+  let results = mockParts
+  if (category && category !== "all") {
+    results = results.filter((p) => p.category === category)
+  }
+  if (query.trim()) {
+    const q = query.toLowerCase()
+    results = results.filter((p) => 
+      p.name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q)
+    )
+  }
+  return results.slice(0, 30)
 }
 
-// ============ Custom Hooks ============
+// ============ Hooks ============
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value)
@@ -117,10 +216,6 @@ function useDebounce<T>(value: T, delay: number): T {
 }
 
 // ============ Types ============
-
-type Customer = (typeof mockCustomers)[0]
-type ServiceItem = (typeof mockServiceItems)[0]
-type Part = (typeof mockParts)[0]
 
 type ServiceLineItem = {
   id: string
@@ -136,116 +231,12 @@ type PartLineItem = {
   type: "part"
   partId: string
   partName: string
+  unit: string
   quantity: number
   unitPrice: number
 }
 
 type LineItem = ServiceLineItem | PartLineItem
-
-// ============ Async Search Combobox Component ============
-
-interface AsyncComboboxProps<T> {
-  placeholder: string
-  searchPlaceholder: string
-  value: T | null
-  onSelect: (item: T) => void
-  searchFn: (query: string) => Promise<T[]>
-  renderItem: (item: T, isSelected: boolean) => React.ReactNode
-  renderValue: (item: T) => React.ReactNode
-  getKey: (item: T) => string
-  emptyText?: string
-  className?: string
-}
-
-function AsyncCombobox<T>({
-  placeholder,
-  searchPlaceholder,
-  value,
-  onSelect,
-  searchFn,
-  renderItem,
-  renderValue,
-  getKey,
-  emptyText = "未找到结果",
-  className,
-}: AsyncComboboxProps<T>) {
-  const [open, setOpen] = useState(false)
-  const [query, setQuery] = useState("")
-  const [results, setResults] = useState<T[]>([])
-  const [loading, setLoading] = useState(false)
-  const debouncedQuery = useDebounce(query, 300)
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    async function doSearch() {
-      setLoading(true)
-      try {
-        const data = await searchFn(debouncedQuery)
-        if (!cancelled) setResults(data)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    if (open) doSearch()
-    return () => { cancelled = true }
-  }, [debouncedQuery, open, searchFn])
-
-  // Focus input when opened
-  useEffect(() => {
-    if (open) {
-      setTimeout(() => inputRef.current?.focus(), 50)
-    } else {
-      setQuery("")
-    }
-  }, [open])
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className={cn("w-full justify-between font-normal h-10", className)}
-        >
-          {value ? renderValue(value) : <span className="text-muted-foreground">{placeholder}</span>}
-          <ChevronsUpDown className="size-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-        <div className="flex items-center border-b px-3 py-2 gap-2">
-          <Search className="size-4 text-muted-foreground shrink-0" />
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={searchPlaceholder}
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-          />
-          {loading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
-        </div>
-        <div className="max-h-64 overflow-y-auto p-1">
-          {!loading && results.length === 0 && (
-            <div className="py-6 text-center text-sm text-muted-foreground">{emptyText}</div>
-          )}
-          {results.map((item) => (
-            <button
-              key={getKey(item)}
-              onClick={() => {
-                onSelect(item)
-                setOpen(false)
-              }}
-              className="w-full flex items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-accent transition-colors text-left"
-            >
-              {renderItem(item, value ? getKey(value) === getKey(item) : false)}
-            </button>
-          ))}
-        </div>
-      </PopoverContent>
-    </Popover>
-  )
-}
 
 // ============ Static Data ============
 
@@ -265,12 +256,556 @@ const workBays = [
   { id: "b5", name: "钣喷间" },
 ]
 
+// ============ Selection Dialogs ============
+
+interface CustomerVehicleDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSelect: (customer: Customer, vehicle: Vehicle) => void
+}
+
+function CustomerVehicleDialog({ open, onOpenChange, onSelect }: CustomerVehicleDialogProps) {
+  const [tab, setTab] = useState<"customer" | "vehicle">("customer")
+  const [customerQuery, setCustomerQuery] = useState("")
+  const [vehicleQuery, setVehicleQuery] = useState("")
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [vehicles, setVehicles] = useState<Vehicle[]>([])
+  const [loading, setLoading] = useState(false)
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+
+  const debouncedCustomerQuery = useDebounce(customerQuery, 300)
+  const debouncedVehicleQuery = useDebounce(vehicleQuery, 300)
+
+  // Search customers
+  useEffect(() => {
+    if (!open || tab !== "customer") return
+    let cancelled = false
+    setLoading(true)
+    searchCustomers(debouncedCustomerQuery).then((data) => {
+      if (!cancelled) {
+        setCustomers(data)
+        setLoading(false)
+      }
+    })
+    return () => { cancelled = true }
+  }, [debouncedCustomerQuery, open, tab])
+
+  // Search vehicles
+  useEffect(() => {
+    if (!open || tab !== "vehicle") return
+    let cancelled = false
+    setLoading(true)
+    searchVehicles(debouncedVehicleQuery).then((data) => {
+      if (!cancelled) {
+        setVehicles(data)
+        setLoading(false)
+      }
+    })
+    return () => { cancelled = true }
+  }, [debouncedVehicleQuery, open, tab])
+
+  // Load vehicles for selected customer
+  useEffect(() => {
+    if (!selectedCustomer) return
+    let cancelled = false
+    setLoading(true)
+    searchVehicles("", selectedCustomer.id).then((data) => {
+      if (!cancelled) {
+        setVehicles(data)
+        setLoading(false)
+      }
+    })
+    return () => { cancelled = true }
+  }, [selectedCustomer])
+
+  const handleSelectCustomer = (customer: Customer) => {
+    setSelectedCustomer(customer)
+  }
+
+  const handleSelectVehicle = (vehicle: Vehicle) => {
+    const customer = selectedCustomer || mockCustomers.find((c) => c.id === vehicle.customerId)
+    if (customer) {
+      onSelect(customer, vehicle)
+      onOpenChange(false)
+      // Reset state
+      setSelectedCustomer(null)
+      setCustomerQuery("")
+      setVehicleQuery("")
+      setTab("customer")
+    }
+  }
+
+  const handleVehicleFromList = (vehicle: Vehicle) => {
+    const customer = mockCustomers.find((c) => c.id === vehicle.customerId)
+    if (customer) {
+      onSelect(customer, vehicle)
+      onOpenChange(false)
+      setSelectedCustomer(null)
+      setCustomerQuery("")
+      setVehicleQuery("")
+      setTab("customer")
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-4xl max-h-[85vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>选择客户与车辆</DialogTitle>
+          <DialogDescription>
+            可以先选客户再选车辆，或直接按车牌号搜索车辆
+          </DialogDescription>
+        </DialogHeader>
+
+        <Tabs value={tab} onValueChange={(v) => setTab(v as "customer" | "vehicle")} className="flex-1 flex flex-col min-h-0">
+          <TabsList className="w-full justify-start">
+            <TabsTrigger value="customer" className="gap-2">
+              <User className="size-4" /> 按客户查找
+            </TabsTrigger>
+            <TabsTrigger value="vehicle" className="gap-2">
+              <Car className="size-4" /> 按车辆查找
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="customer" className="flex-1 flex flex-col min-h-0 mt-4">
+            {!selectedCustomer ? (
+              <>
+                <div className="relative mb-4">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                  <Input
+                    placeholder="输入客户姓名或手机号搜索..."
+                    value={customerQuery}
+                    onChange={(e) => setCustomerQuery(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+                <div className="flex-1 overflow-auto border rounded-lg min-h-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="w-32">姓名</TableHead>
+                        <TableHead className="w-40">手机号</TableHead>
+                        <TableHead>地址</TableHead>
+                        <TableHead className="w-20 text-right">操作</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {loading ? (
+                        <TableRow>
+                          <TableCell colSpan={4} className="h-32 text-center">
+                            <Loader2 className="size-5 animate-spin mx-auto text-muted-foreground" />
+                          </TableCell>
+                        </TableRow>
+                      ) : customers.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={4} className="h-32 text-center text-muted-foreground">
+                            未找到匹配的客户
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        customers.map((customer) => (
+                          <TableRow 
+                            key={customer.id} 
+                            className="cursor-pointer"
+                            onClick={() => handleSelectCustomer(customer)}
+                          >
+                            <TableCell className="font-medium">{customer.name}</TableCell>
+                            <TableCell>{customer.phone}</TableCell>
+                            <TableCell className="text-muted-foreground truncate max-w-xs">{customer.address}</TableCell>
+                            <TableCell className="text-right">
+                              <Button size="sm" variant="ghost">
+                                选择 <ChevronRight className="size-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg mb-4">
+                  <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center">
+                    <User className="size-5 text-primary" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-medium">{selectedCustomer.name}</div>
+                    <div className="text-sm text-muted-foreground flex items-center gap-2">
+                      <Phone className="size-3" /> {selectedCustomer.phone}
+                    </div>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => setSelectedCustomer(null)}>
+                    <X className="size-4" /> 重新选择
+                  </Button>
+                </div>
+                <div className="text-sm font-medium mb-2">选择该客户的车辆：</div>
+                <div className="flex-1 overflow-auto border rounded-lg min-h-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="w-36">车牌号</TableHead>
+                        <TableHead>品牌车型</TableHead>
+                        <TableHead className="w-48">VIN</TableHead>
+                        <TableHead className="w-20 text-right">操作</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {loading ? (
+                        <TableRow>
+                          <TableCell colSpan={4} className="h-32 text-center">
+                            <Loader2 className="size-5 animate-spin mx-auto text-muted-foreground" />
+                          </TableCell>
+                        </TableRow>
+                      ) : vehicles.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={4} className="h-32 text-center text-muted-foreground">
+                            该客户名下暂无车辆
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        vehicles.map((vehicle) => (
+                          <TableRow 
+                            key={vehicle.id} 
+                            className="cursor-pointer"
+                            onClick={() => handleSelectVehicle(vehicle)}
+                          >
+                            <TableCell className="font-medium font-mono">{vehicle.plate}</TableCell>
+                            <TableCell>{vehicle.brand} {vehicle.model}</TableCell>
+                            <TableCell className="text-muted-foreground font-mono text-xs">{vehicle.vin}</TableCell>
+                            <TableCell className="text-right">
+                              <Button size="sm" variant="ghost">
+                                选择
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
+            )}
+          </TabsContent>
+
+          <TabsContent value="vehicle" className="flex-1 flex flex-col min-h-0 mt-4">
+            <div className="relative mb-4">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Input
+                placeholder="输入车牌号、品牌、车型或车主姓名搜索..."
+                value={vehicleQuery}
+                onChange={(e) => setVehicleQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <div className="flex-1 overflow-auto border rounded-lg min-h-0">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead className="w-36">车牌号</TableHead>
+                    <TableHead>品牌车型</TableHead>
+                    <TableHead className="w-32">车主</TableHead>
+                    <TableHead className="w-48">VIN</TableHead>
+                    <TableHead className="w-20 text-right">操作</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loading ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="h-32 text-center">
+                        <Loader2 className="size-5 animate-spin mx-auto text-muted-foreground" />
+                      </TableCell>
+                    </TableRow>
+                  ) : vehicles.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
+                        未找到匹配的车辆
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    vehicles.map((vehicle) => (
+                      <TableRow 
+                        key={vehicle.id} 
+                        className="cursor-pointer"
+                        onClick={() => handleVehicleFromList(vehicle)}
+                      >
+                        <TableCell className="font-medium font-mono">{vehicle.plate}</TableCell>
+                        <TableCell>{vehicle.brand} {vehicle.model}</TableCell>
+                        <TableCell>{vehicle.customerName}</TableCell>
+                        <TableCell className="text-muted-foreground font-mono text-xs">{vehicle.vin}</TableCell>
+                        <TableCell className="text-right">
+                          <Button size="sm" variant="ghost">
+                            选择
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+interface ServiceDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSelect: (service: ServiceItem) => void
+}
+
+function ServiceDialog({ open, onOpenChange, onSelect }: ServiceDialogProps) {
+  const [query, setQuery] = useState("")
+  const [category, setCategory] = useState("all")
+  const [results, setResults] = useState<ServiceItem[]>([])
+  const [loading, setLoading] = useState(false)
+
+  const debouncedQuery = useDebounce(query, 250)
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    setLoading(true)
+    searchServices(debouncedQuery, category).then((data) => {
+      if (!cancelled) {
+        setResults(data)
+        setLoading(false)
+      }
+    })
+    return () => { cancelled = true }
+  }, [debouncedQuery, category, open])
+
+  const handleSelect = (service: ServiceItem) => {
+    onSelect(service)
+    onOpenChange(false)
+    setQuery("")
+    setCategory("all")
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-3xl max-h-[80vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Wrench className="size-5" /> 添加维修项目
+          </DialogTitle>
+          <DialogDescription>
+            搜索并选择维修项目，添加到工单中
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex gap-3 mt-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <Input
+              placeholder="输入项目名称或编码搜索..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <Select value={category} onValueChange={setCategory}>
+            <SelectTrigger className="w-32">
+              <SelectValue placeholder="分类" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部分类</SelectItem>
+              <SelectItem value="保养">保养</SelectItem>
+              <SelectItem value="维修">维修</SelectItem>
+              <SelectItem value="检测">检测</SelectItem>
+              <SelectItem value="钣喷">钣喷</SelectItem>
+              <SelectItem value="轮胎">轮胎</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex-1 overflow-auto border rounded-lg min-h-0 mt-4">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/50">
+                <TableHead className="w-28">编码</TableHead>
+                <TableHead>项目名称</TableHead>
+                <TableHead className="w-20 text-center">分类</TableHead>
+                <TableHead className="w-24 text-right">工时</TableHead>
+                <TableHead className="w-28 text-right">工时费</TableHead>
+                <TableHead className="w-20 text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="h-32 text-center">
+                    <Loader2 className="size-5 animate-spin mx-auto text-muted-foreground" />
+                  </TableCell>
+                </TableRow>
+              ) : results.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                    未找到匹配的维修项目
+                  </TableCell>
+                </TableRow>
+              ) : (
+                results.map((service) => (
+                  <TableRow key={service.id} className="cursor-pointer" onClick={() => handleSelect(service)}>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{service.code}</TableCell>
+                    <TableCell className="font-medium">{service.name}</TableCell>
+                    <TableCell className="text-center">
+                      <Badge variant="secondary" className="text-xs">{service.category}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{service.laborHours}h</TableCell>
+                    <TableCell className="text-right tabular-nums">¥{service.laborRate.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">
+                      <Button size="sm" variant="ghost">添加</Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+interface PartDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSelect: (part: PartItem) => void
+}
+
+function PartDialog({ open, onOpenChange, onSelect }: PartDialogProps) {
+  const [query, setQuery] = useState("")
+  const [category, setCategory] = useState("all")
+  const [results, setResults] = useState<PartItem[]>([])
+  const [loading, setLoading] = useState(false)
+
+  const debouncedQuery = useDebounce(query, 250)
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    setLoading(true)
+    searchParts(debouncedQuery, category).then((data) => {
+      if (!cancelled) {
+        setResults(data)
+        setLoading(false)
+      }
+    })
+    return () => { cancelled = true }
+  }, [debouncedQuery, category, open])
+
+  const handleSelect = (part: PartItem) => {
+    onSelect(part)
+    onOpenChange(false)
+    setQuery("")
+    setCategory("all")
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-3xl max-h-[80vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Package className="size-5" /> 添加配件
+          </DialogTitle>
+          <DialogDescription>
+            搜索并选择配件，添加到工单中
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex gap-3 mt-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <Input
+              placeholder="输入配件名称或编码搜索..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <Select value={category} onValueChange={setCategory}>
+            <SelectTrigger className="w-32">
+              <SelectValue placeholder="分类" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部分类</SelectItem>
+              <SelectItem value="机油">机油</SelectItem>
+              <SelectItem value="滤清器">滤清器</SelectItem>
+              <SelectItem value="制动">制动</SelectItem>
+              <SelectItem value="轮胎">轮胎</SelectItem>
+              <SelectItem value="电器">电器</SelectItem>
+              <SelectItem value="其他">其他</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex-1 overflow-auto border rounded-lg min-h-0 mt-4">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/50">
+                <TableHead className="w-28">编码</TableHead>
+                <TableHead>配件名称</TableHead>
+                <TableHead className="w-20 text-center">分类</TableHead>
+                <TableHead className="w-16 text-center">单位</TableHead>
+                <TableHead className="w-20 text-right">库存</TableHead>
+                <TableHead className="w-28 text-right">单价</TableHead>
+                <TableHead className="w-20 text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="h-32 text-center">
+                    <Loader2 className="size-5 animate-spin mx-auto text-muted-foreground" />
+                  </TableCell>
+                </TableRow>
+              ) : results.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                    未找到匹配的配件
+                  </TableCell>
+                </TableRow>
+              ) : (
+                results.map((part) => (
+                  <TableRow key={part.id} className="cursor-pointer" onClick={() => handleSelect(part)}>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{part.code}</TableCell>
+                    <TableCell className="font-medium">{part.name}</TableCell>
+                    <TableCell className="text-center">
+                      <Badge variant="secondary" className="text-xs">{part.category}</Badge>
+                    </TableCell>
+                    <TableCell className="text-center">{part.unit}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      <span className={cn(part.stock < 10 && "text-destructive")}>{part.stock}</span>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">¥{part.price.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">
+                      <Button size="sm" variant="ghost">添加</Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ============ Main Component ============
 
 export default function CreateServiceOrderPage() {
-  // Form state
+  // Customer & Vehicle
   const [customer, setCustomer] = useState<Customer | null>(null)
-  const [vehicleId, setVehicleId] = useState("")
+  const [vehicle, setVehicle] = useState<Vehicle | null>(null)
+  const [customerVehicleDialogOpen, setCustomerVehicleDialogOpen] = useState(false)
+
+  // Order info
   const [orderType, setOrderType] = useState("")
   const [technicianId, setTechnicianId] = useState("")
   const [bayId, setBayId] = useState("")
@@ -281,54 +816,14 @@ export default function CreateServiceOrderPage() {
 
   // Line items
   const [lineItems, setLineItems] = useState<LineItem[]>([])
+  const [serviceDialogOpen, setServiceDialogOpen] = useState(false)
+  const [partDialogOpen, setPartDialogOpen] = useState(false)
 
-  // Popovers for adding items
-  const [serviceOpen, setServiceOpen] = useState(false)
-  const [partOpen, setPartOpen] = useState(false)
-  const [serviceQuery, setServiceQuery] = useState("")
-  const [partQuery, setPartQuery] = useState("")
-  const [serviceResults, setServiceResults] = useState<ServiceItem[]>([])
-  const [partResults, setPartResults] = useState<Part[]>([])
-  const [serviceLoading, setServiceLoading] = useState(false)
-  const [partLoading, setPartLoading] = useState(false)
+  const handleSelectCustomerVehicle = useCallback((c: Customer, v: Vehicle) => {
+    setCustomer(c)
+    setVehicle(v)
+  }, [])
 
-  const debouncedServiceQuery = useDebounce(serviceQuery, 250)
-  const debouncedPartQuery = useDebounce(partQuery, 250)
-
-  // Search services
-  useEffect(() => {
-    if (!serviceOpen) return
-    let cancelled = false
-    setServiceLoading(true)
-    searchServices(debouncedServiceQuery).then((data) => {
-      if (!cancelled) {
-        setServiceResults(data)
-        setServiceLoading(false)
-      }
-    })
-    return () => { cancelled = true }
-  }, [debouncedServiceQuery, serviceOpen])
-
-  // Search parts
-  useEffect(() => {
-    if (!partOpen) return
-    let cancelled = false
-    setPartLoading(true)
-    searchParts(debouncedPartQuery).then((data) => {
-      if (!cancelled) {
-        setPartResults(data)
-        setPartLoading(false)
-      }
-    })
-    return () => { cancelled = true }
-  }, [debouncedPartQuery, partOpen])
-
-  // Clear vehicle when customer changes
-  useEffect(() => {
-    setVehicleId("")
-  }, [customer])
-
-  // Add service
   const addService = useCallback((service: ServiceItem) => {
     setLineItems((prev) => [
       ...prev,
@@ -341,12 +836,9 @@ export default function CreateServiceOrderPage() {
         laborRate: service.laborRate,
       },
     ])
-    setServiceOpen(false)
-    setServiceQuery("")
   }, [])
 
-  // Add part
-  const addPart = useCallback((part: Part) => {
+  const addPart = useCallback((part: PartItem) => {
     setLineItems((prev) => [
       ...prev,
       {
@@ -354,20 +846,17 @@ export default function CreateServiceOrderPage() {
         type: "part",
         partId: part.id,
         partName: part.name,
+        unit: part.unit,
         quantity: 1,
         unitPrice: part.price,
       },
     ])
-    setPartOpen(false)
-    setPartQuery("")
   }, [])
 
-  // Remove line item
   const removeLineItem = useCallback((id: string) => {
     setLineItems((prev) => prev.filter((item) => item.id !== id))
   }, [])
 
-  // Update service line
   const updateServiceItem = useCallback((id: string, field: "laborHours" | "laborRate", value: number) => {
     setLineItems((prev) =>
       prev.map((item) =>
@@ -376,7 +865,6 @@ export default function CreateServiceOrderPage() {
     )
   }, [])
 
-  // Update part line
   const updatePartItem = useCallback((id: string, field: "quantity" | "unitPrice", value: number) => {
     setLineItems((prev) =>
       prev.map((item) =>
@@ -402,14 +890,14 @@ export default function CreateServiceOrderPage() {
     return { laborTotal, partsTotal, subtotal, discountAmount, total }
   }, [lineItems, discount])
 
-  const serviceCount = lineItems.filter((i) => i.type === "service").length
-  const partCount = lineItems.filter((i) => i.type === "part").length
+  const serviceItems = lineItems.filter((i): i is ServiceLineItem => i.type === "service")
+  const partItems = lineItems.filter((i): i is PartLineItem => i.type === "part")
 
   return (
-    <div className="min-h-screen bg-muted/40">
+    <div className="min-h-screen bg-muted/30">
       <PageHeader
         title="创建维修工单"
-        description="填写客户与车辆信息，添加维修项目和配件"
+        description="录入客户车辆信息，添加维修项目和配件"
         crumbs={[
           { label: "DMS" },
           { label: "售后维修", href: "/dms/service" },
@@ -417,9 +905,9 @@ export default function CreateServiceOrderPage() {
         ]}
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" asChild>
+            <Button variant="outline" size="sm" asChild>
               <Link href="/dms/service">
-                <ArrowLeft className="size-4" /> 返回
+                <ArrowLeft className="size-4" /> 返回列表
               </Link>
             </Button>
             <Button size="sm">
@@ -429,85 +917,87 @@ export default function CreateServiceOrderPage() {
         }
       />
 
-      <div className="p-4 md:p-6 max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Main Form Area */}
-          <div className="lg:col-span-8 space-y-6">
-            {/* Customer & Vehicle Section */}
+      <div className="p-4 lg:p-6">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 xl:grid-cols-3 gap-6">
+          {/* Left: Main Form */}
+          <div className="xl:col-span-2 space-y-6">
+            {/* Customer & Vehicle Card */}
             <Card>
-              <CardHeader className="pb-4">
-                <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
                   <User className="size-4 text-primary" />
-                  客户与车辆
+                  客户与车辆信息
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Customer Search */}
-                  <div className="space-y-1.5">
-                    <Label className="text-sm">
-                      客户 <span className="text-destructive">*</span>
-                    </Label>
-                    <AsyncCombobox<Customer>
-                      placeholder="搜索客户姓名或手机号..."
-                      searchPlaceholder="输入姓名或手机号搜索..."
-                      value={customer}
-                      onSelect={setCustomer}
-                      searchFn={searchCustomers}
-                      getKey={(c) => c.id}
-                      emptyText="请输入关键词搜索客户"
-                      renderValue={(c) => (
-                        <span className="flex items-center gap-2 truncate">
-                          <User className="size-4 text-muted-foreground shrink-0" />
-                          <span className="truncate">{c.name}</span>
-                          <span className="text-muted-foreground text-xs">{c.phone}</span>
-                        </span>
-                      )}
-                      renderItem={(c, selected) => (
-                        <>
-                          <Check className={cn("size-4 shrink-0", selected ? "opacity-100" : "opacity-0")} />
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium truncate">{c.name}</div>
-                            <div className="text-xs text-muted-foreground flex items-center gap-2">
-                              <Phone className="size-3" /> {c.phone}
-                              <span className="text-muted-foreground/60">·</span>
-                              <Car className="size-3" /> {c.vehicles.length} 台车
-                            </div>
+              <CardContent>
+                {!customer || !vehicle ? (
+                  <Button 
+                    variant="outline" 
+                    className="w-full h-24 border-dashed flex flex-col gap-2"
+                    onClick={() => setCustomerVehicleDialogOpen(true)}
+                  >
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <User className="size-5" />
+                      <span className="text-lg">/</span>
+                      <Car className="size-5" />
+                    </div>
+                    <span className="text-sm">点击选择客户与车辆</span>
+                  </Button>
+                ) : (
+                  <div className="flex flex-col sm:flex-row gap-4">
+                    <div className="flex-1 p-4 bg-muted/50 rounded-lg">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                          <User className="size-5 text-primary" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">{customer.name}</div>
+                          <div className="text-sm text-muted-foreground flex items-center gap-1">
+                            <Phone className="size-3" /> {customer.phone}
                           </div>
-                        </>
-                      )}
-                    />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex-1 p-4 bg-muted/50 rounded-lg">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                          <Car className="size-5 text-primary" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-medium font-mono truncate">{vehicle.plate}</div>
+                          <div className="text-sm text-muted-foreground truncate">
+                            {vehicle.brand} {vehicle.model}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="self-start shrink-0"
+                      onClick={() => setCustomerVehicleDialogOpen(true)}
+                    >
+                      更换
+                    </Button>
                   </div>
+                )}
+              </CardContent>
+            </Card>
 
-                  {/* Vehicle Select */}
-                  <div className="space-y-1.5">
-                    <Label className="text-sm">
-                      车辆 <span className="text-destructive">*</span>
-                    </Label>
-                    <Select value={vehicleId} onValueChange={setVehicleId} disabled={!customer}>
-                      <SelectTrigger className="h-10">
-                        <SelectValue placeholder={customer ? "选择车辆" : "请先选择客户"} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {customer?.vehicles.map((vehicle, idx) => (
-                          <SelectItem key={idx} value={vehicle}>
-                            <span className="flex items-center gap-2">
-                              <Car className="size-4 text-muted-foreground" />
-                              {vehicle}
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {/* Additional Info Row */}
+            {/* Order Info Card */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <FileText className="size-4 text-primary" />
+                  工单信息
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   <div className="space-y-1.5">
                     <Label className="text-sm">工单类型 <span className="text-destructive">*</span></Label>
                     <Select value={orderType} onValueChange={setOrderType}>
-                      <SelectTrigger className="h-10">
+                      <SelectTrigger>
                         <SelectValue placeholder="选择类型" />
                       </SelectTrigger>
                       <SelectContent>
@@ -519,7 +1009,6 @@ export default function CreateServiceOrderPage() {
                       </SelectContent>
                     </Select>
                   </div>
-
                   <div className="space-y-1.5">
                     <Label className="text-sm">进店里程</Label>
                     <div className="relative">
@@ -528,365 +1017,309 @@ export default function CreateServiceOrderPage() {
                         placeholder="0"
                         value={mileage}
                         onChange={(e) => setMileage(e.target.value)}
-                        className="h-10 pr-10"
+                        className="pr-10"
                       />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                        km
-                      </span>
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">km</span>
                     </div>
                   </div>
-
                   <div className="space-y-1.5">
                     <Label className="text-sm">指派技师</Label>
                     <Select value={technicianId} onValueChange={setTechnicianId}>
-                      <SelectTrigger className="h-10">
+                      <SelectTrigger>
                         <SelectValue placeholder="选择技师" />
                       </SelectTrigger>
                       <SelectContent>
-                        {technicians.map((tech) => (
-                          <SelectItem key={tech.id} value={tech.id}>
-                            {tech.name}
-                            <span className="text-xs text-muted-foreground ml-1">({tech.specialty})</span>
+                        {technicians.map((t) => (
+                          <SelectItem key={t.id} value={t.id}>
+                            {t.name} <span className="text-muted-foreground text-xs">({t.specialty})</span>
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
-
                   <div className="space-y-1.5">
                     <Label className="text-sm">工位</Label>
                     <Select value={bayId} onValueChange={setBayId}>
-                      <SelectTrigger className="h-10">
+                      <SelectTrigger>
                         <SelectValue placeholder="选择工位" />
                       </SelectTrigger>
                       <SelectContent>
-                        {workBays.map((bay) => (
-                          <SelectItem key={bay.id} value={bay.id}>
-                            {bay.name}
-                          </SelectItem>
+                        {workBays.map((b) => (
+                          <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
-                </div>
-
-                {/* Date and Notes */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-sm">预计交车时间</Label>
+                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                    <Label className="text-sm">预计交车</Label>
                     <Input
                       type="datetime-local"
                       value={estimatedDate}
                       onChange={(e) => setEstimatedDate(e.target.value)}
-                      className="h-10"
                     />
                   </div>
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 col-span-2 sm:col-span-3">
                     <Label className="text-sm">备注</Label>
-                    <Input
-                      placeholder="客户反馈、特殊要求..."
+                    <Textarea
+                      placeholder="客户要求、注意事项等..."
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
-                      className="h-10"
+                      className="resize-none h-9 min-h-9"
                     />
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Line Items Section */}
+            {/* Service Items Card */}
             <Card>
               <CardHeader className="pb-3">
-                <div className="flex items-center justify-between gap-4">
-                  <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2">
                     <Wrench className="size-4 text-primary" />
-                    维修项目与配件
-                    {lineItems.length > 0 && (
-                      <Badge variant="secondary" className="ml-2 font-normal">
-                        {lineItems.length} 项
-                      </Badge>
+                    维修项目
+                    {serviceItems.length > 0 && (
+                      <Badge variant="secondary" className="ml-1">{serviceItems.length}</Badge>
                     )}
                   </CardTitle>
-                  <div className="flex items-center gap-2">
-                    {/* Add Service Popover */}
-                    <Popover open={serviceOpen} onOpenChange={(o) => { setServiceOpen(o); if (!o) setServiceQuery("") }}>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" size="sm">
-                          <Wrench className="size-4" />
-                          <span className="hidden sm:inline">维修项目</span>
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-80 p-0" align="end">
-                        <div className="flex items-center border-b px-3 py-2 gap-2">
-                          <Search className="size-4 text-muted-foreground" />
-                          <input
-                            value={serviceQuery}
-                            onChange={(e) => setServiceQuery(e.target.value)}
-                            placeholder="搜索维修项目..."
-                            className="flex-1 bg-transparent text-sm outline-none"
-                            autoFocus
-                          />
-                          {serviceLoading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
-                        </div>
-                        <div className="max-h-64 overflow-y-auto p-1">
-                          {!serviceLoading && serviceResults.length === 0 && (
-                            <div className="py-6 text-center text-sm text-muted-foreground">
-                              {serviceQuery ? "未找到匹配项目" : "输入关键词搜索"}
-                            </div>
-                          )}
-                          {serviceResults.map((service) => (
-                            <button
-                              key={service.id}
-                              onClick={() => addService(service)}
-                              className="w-full flex items-start gap-3 rounded-md px-2 py-2 text-sm hover:bg-accent transition-colors text-left"
-                            >
-                              <Wrench className="size-4 text-muted-foreground mt-0.5 shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <div className="font-medium truncate">{service.name}</div>
-                                <div className="text-xs text-muted-foreground flex items-center gap-2">
-                                  <Clock className="size-3" /> {service.laborHours}h
-                                  <span>·</span>
-                                  <span>¥{service.laborRate}/h</span>
-                                </div>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-
-                    {/* Add Part Popover */}
-                    <Popover open={partOpen} onOpenChange={(o) => { setPartOpen(o); if (!o) setPartQuery("") }}>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" size="sm">
-                          <Package className="size-4" />
-                          <span className="hidden sm:inline">配件</span>
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-80 p-0" align="end">
-                        <div className="flex items-center border-b px-3 py-2 gap-2">
-                          <Search className="size-4 text-muted-foreground" />
-                          <input
-                            value={partQuery}
-                            onChange={(e) => setPartQuery(e.target.value)}
-                            placeholder="搜索配件名称..."
-                            className="flex-1 bg-transparent text-sm outline-none"
-                            autoFocus
-                          />
-                          {partLoading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
-                        </div>
-                        <div className="max-h-64 overflow-y-auto p-1">
-                          {!partLoading && partResults.length === 0 && (
-                            <div className="py-6 text-center text-sm text-muted-foreground">
-                              {partQuery ? "未找到匹配配件" : "输入关键词搜索"}
-                            </div>
-                          )}
-                          {partResults.map((part) => (
-                            <button
-                              key={part.id}
-                              onClick={() => addPart(part)}
-                              className="w-full flex items-start gap-3 rounded-md px-2 py-2 text-sm hover:bg-accent transition-colors text-left"
-                            >
-                              <Package className="size-4 text-muted-foreground mt-0.5 shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <div className="font-medium truncate">{part.name}</div>
-                                <div className="text-xs text-muted-foreground">
-                                  ¥{part.price}/{part.unit}
-                                </div>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  </div>
+                  <Button size="sm" variant="outline" onClick={() => setServiceDialogOpen(true)}>
+                    <Plus className="size-4" /> 添加项目
+                  </Button>
                 </div>
               </CardHeader>
-              <CardContent className="p-0">
-                {lineItems.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 text-center border-t border-dashed">
-                    <div className="size-12 rounded-full bg-muted flex items-center justify-center mb-3">
-                      <Plus className="size-5 text-muted-foreground" />
-                    </div>
-                    <p className="text-sm font-medium text-muted-foreground">暂无项目</p>
-                    <p className="text-xs text-muted-foreground mt-1">点击上方按钮添加维修项目或配件</p>
+              <CardContent>
+                {serviceItems.length === 0 ? (
+                  <div 
+                    className="h-24 border border-dashed rounded-lg flex items-center justify-center text-muted-foreground cursor-pointer hover:bg-muted/30 transition-colors"
+                    onClick={() => setServiceDialogOpen(true)}
+                  >
+                    点击添加维修项目
                   </div>
                 ) : (
-                  <div className="border-t">
-                    {/* Table Header */}
-                    <div className="grid grid-cols-12 gap-2 px-4 py-2.5 bg-muted/50 text-xs font-medium text-muted-foreground border-b">
-                      <div className="col-span-5 sm:col-span-6">项目 / 配件</div>
-                      <div className="col-span-2 text-center">工时/数量</div>
-                      <div className="col-span-2 text-center">单价</div>
-                      <div className="col-span-2 text-right">小计</div>
-                      <div className="col-span-1"></div>
-                    </div>
-                    {/* Table Body */}
-                    <div className="divide-y">
-                      {lineItems.map((item) => (
-                        <div key={item.id} className="grid grid-cols-12 gap-2 px-4 py-3 items-center hover:bg-muted/30 transition-colors">
-                          <div className="col-span-5 sm:col-span-6 flex items-center gap-2 min-w-0">
-                            <Badge
-                              variant={item.type === "service" ? "secondary" : "outline"}
-                              className="shrink-0 text-[10px] px-1.5"
-                            >
-                              {item.type === "service" ? "维修" : "配件"}
-                            </Badge>
-                            <span className="text-sm font-medium truncate">
-                              {item.type === "service" ? item.serviceName : item.partName}
-                            </span>
-                          </div>
-                          <div className="col-span-2">
-                            <Input
-                              type="number"
-                              min={item.type === "service" ? 0.1 : 1}
-                              step={item.type === "service" ? 0.1 : 1}
-                              value={item.type === "service" ? item.laborHours : item.quantity}
-                              onChange={(e) =>
-                                item.type === "service"
-                                  ? updateServiceItem(item.id, "laborHours", parseFloat(e.target.value) || 0)
-                                  : updatePartItem(item.id, "quantity", parseInt(e.target.value) || 1)
-                              }
-                              className="h-8 text-center text-sm"
-                            />
-                          </div>
-                          <div className="col-span-2">
-                            <Input
-                              type="number"
-                              min={0}
-                              value={item.type === "service" ? item.laborRate : item.unitPrice}
-                              onChange={(e) =>
-                                item.type === "service"
-                                  ? updateServiceItem(item.id, "laborRate", parseFloat(e.target.value) || 0)
-                                  : updatePartItem(item.id, "unitPrice", parseFloat(e.target.value) || 0)
-                              }
-                              className="h-8 text-center text-sm"
-                            />
-                          </div>
-                          <div className="col-span-2 text-right tabular-nums text-sm font-medium">
-                            ¥
-                            {item.type === "service"
-                              ? (item.laborHours * item.laborRate).toFixed(2)
-                              : (item.quantity * item.unitPrice).toFixed(2)}
-                          </div>
-                          <div className="col-span-1 flex justify-end">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="size-7 text-muted-foreground hover:text-destructive"
-                              onClick={() => removeLineItem(item.id)}
-                            >
-                              <Trash2 className="size-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                  <div className="border rounded-lg overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/50">
+                          <TableHead>项目名称</TableHead>
+                          <TableHead className="w-28 text-right">工时</TableHead>
+                          <TableHead className="w-32 text-right">工时费</TableHead>
+                          <TableHead className="w-28 text-right">小计</TableHead>
+                          <TableHead className="w-16"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {serviceItems.map((item) => (
+                          <TableRow key={item.id}>
+                            <TableCell className="font-medium">{item.serviceName}</TableCell>
+                            <TableCell className="text-right">
+                              <Input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                value={item.laborHours}
+                                onChange={(e) => updateServiceItem(item.id, "laborHours", parseFloat(e.target.value) || 0)}
+                                className="w-20 h-8 text-right ml-auto"
+                              />
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Input
+                                type="number"
+                                min="0"
+                                value={item.laborRate}
+                                onChange={(e) => updateServiceItem(item.id, "laborRate", parseFloat(e.target.value) || 0)}
+                                className="w-24 h-8 text-right ml-auto"
+                              />
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums font-medium">
+                              ¥{(item.laborHours * item.laborRate).toFixed(2)}
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="size-8 text-muted-foreground hover:text-destructive"
+                                onClick={() => removeLineItem(item.id)}
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Parts Card */}
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Package className="size-4 text-primary" />
+                    配件材料
+                    {partItems.length > 0 && (
+                      <Badge variant="secondary" className="ml-1">{partItems.length}</Badge>
+                    )}
+                  </CardTitle>
+                  <Button size="sm" variant="outline" onClick={() => setPartDialogOpen(true)}>
+                    <Plus className="size-4" /> 添加配件
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {partItems.length === 0 ? (
+                  <div 
+                    className="h-24 border border-dashed rounded-lg flex items-center justify-center text-muted-foreground cursor-pointer hover:bg-muted/30 transition-colors"
+                    onClick={() => setPartDialogOpen(true)}
+                  >
+                    点击添加配件材料
+                  </div>
+                ) : (
+                  <div className="border rounded-lg overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/50">
+                          <TableHead>配件名称</TableHead>
+                          <TableHead className="w-20 text-center">单位</TableHead>
+                          <TableHead className="w-24 text-right">数量</TableHead>
+                          <TableHead className="w-32 text-right">单价</TableHead>
+                          <TableHead className="w-28 text-right">小计</TableHead>
+                          <TableHead className="w-16"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {partItems.map((item) => (
+                          <TableRow key={item.id}>
+                            <TableCell className="font-medium">{item.partName}</TableCell>
+                            <TableCell className="text-center text-muted-foreground">{item.unit}</TableCell>
+                            <TableCell className="text-right">
+                              <Input
+                                type="number"
+                                min="1"
+                                value={item.quantity}
+                                onChange={(e) => updatePartItem(item.id, "quantity", parseInt(e.target.value) || 1)}
+                                className="w-16 h-8 text-right ml-auto"
+                              />
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Input
+                                type="number"
+                                min="0"
+                                value={item.unitPrice}
+                                onChange={(e) => updatePartItem(item.id, "unitPrice", parseFloat(e.target.value) || 0)}
+                                className="w-24 h-8 text-right ml-auto"
+                              />
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums font-medium">
+                              ¥{(item.quantity * item.unitPrice).toFixed(2)}
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="size-8 text-muted-foreground hover:text-destructive"
+                                onClick={() => removeLineItem(item.id)}
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
                   </div>
                 )}
               </CardContent>
             </Card>
           </div>
 
-          {/* Right Sidebar - Summary */}
-          <div className="lg:col-span-4">
-            <div className="lg:sticky lg:top-6 space-y-4">
+          {/* Right: Summary */}
+          <div className="xl:col-span-1">
+            <div className="sticky top-4">
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base font-semibold">费用汇总</CardTitle>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Calculator className="size-4 text-primary" />
+                    费用汇总
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* Summary Rows */}
-                  <div className="space-y-2.5 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">维修工时费</span>
-                      <span className="tabular-nums">¥ {totals.laborTotal.toFixed(2)}</span>
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">工时费</span>
+                      <span className="tabular-nums">¥{totals.laborTotal.toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">配件材料费</span>
-                      <span className="tabular-nums">¥ {totals.partsTotal.toFixed(2)}</span>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">配件费</span>
+                      <span className="tabular-nums">¥{totals.partsTotal.toFixed(2)}</span>
+                    </div>
+                    <Separator />
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">小计</span>
+                      <span className="tabular-nums font-medium">¥{totals.subtotal.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-muted-foreground">折扣优惠</span>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={discount}
+                          onChange={(e) => setDiscount(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                          className="w-16 h-7 text-right text-sm"
+                        />
+                        <span className="text-muted-foreground">%</span>
+                      </div>
+                    </div>
+                    {discount > 0 && (
+                      <div className="flex justify-between text-sm text-destructive">
+                        <span>优惠金额</span>
+                        <span className="tabular-nums">-¥{totals.discountAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <Separator />
+                    <div className="flex justify-between items-baseline">
+                      <span className="font-medium">应收金额</span>
+                      <span className="text-2xl font-bold text-primary tabular-nums">
+                        ¥{totals.total.toFixed(2)}
+                      </span>
                     </div>
                   </div>
 
-                  <Separator />
-
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">小计</span>
-                    <span className="tabular-nums font-medium">¥ {totals.subtotal.toFixed(2)}</span>
-                  </div>
-
-                  {/* Discount */}
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm text-muted-foreground">折扣</span>
-                    <div className="flex items-center gap-1">
-                      <Input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={discount}
-                        onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
-                        className="w-16 h-8 text-center text-sm"
-                      />
-                      <span className="text-sm text-muted-foreground">%</span>
-                    </div>
-                  </div>
-
-                  {discount > 0 && (
-                    <div className="flex justify-between text-sm text-orange-600">
-                      <span>优惠金额</span>
-                      <span className="tabular-nums">-¥ {totals.discountAmount.toFixed(2)}</span>
-                    </div>
-                  )}
-
-                  <Separator />
-
-                  <div className="flex justify-between items-baseline">
-                    <span className="font-medium">应收金额</span>
-                    <span className="text-2xl font-bold text-primary tabular-nums">
-                      ¥ {totals.total.toFixed(2)}
-                    </span>
-                  </div>
-
-                  {/* Item Tags */}
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    <Badge variant="secondary" className="text-xs font-normal">
-                      <Wrench className="size-3 mr-1" />
-                      {serviceCount} 项维修
-                    </Badge>
-                    <Badge variant="outline" className="text-xs font-normal">
-                      <Package className="size-3 mr-1" />
-                      {partCount} 项配件
-                    </Badge>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="pt-4 space-y-2">
+                  <div className="pt-2 space-y-2">
                     <Button className="w-full" size="lg">
-                      <Save className="size-4" />
-                      保存并派工
+                      <Save className="size-4" /> 保存工单
                     </Button>
-                    <Button variant="outline" className="w-full">
-                      保存为草稿
+                    <Button variant="outline" className="w-full" asChild>
+                      <Link href="/dms/service">取消</Link>
                     </Button>
                   </div>
-                </CardContent>
-              </Card>
-
-              {/* Tips */}
-              <Card className="bg-muted/30">
-                <CardContent className="pt-4">
-                  <h4 className="text-xs font-medium text-muted-foreground mb-2">操作提示</h4>
-                  <ul className="text-xs text-muted-foreground space-y-1">
-                    <li>• 输入姓名或手机号搜索客户</li>
-                    <li>• 工时费 = 工时 × 单价</li>
-                    <li>• 折扣按总金额百分比计算</li>
-                  </ul>
                 </CardContent>
               </Card>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Dialogs */}
+      <CustomerVehicleDialog
+        open={customerVehicleDialogOpen}
+        onOpenChange={setCustomerVehicleDialogOpen}
+        onSelect={handleSelectCustomerVehicle}
+      />
+      <ServiceDialog
+        open={serviceDialogOpen}
+        onOpenChange={setServiceDialogOpen}
+        onSelect={addService}
+      />
+      <PartDialog
+        open={partDialogOpen}
+        onOpenChange={setPartDialogOpen}
+        onSelect={addPart}
+      />
     </div>
   )
 }
