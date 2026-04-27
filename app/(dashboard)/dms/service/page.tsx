@@ -1,3 +1,4 @@
+import Link from "next/link"
 import {
   Wrench,
   Plus,
@@ -85,8 +86,10 @@ export default function ServicePage() {
             <Button variant="outline" size="sm">
               <Calendar className="size-4" /> 排产看板
             </Button>
-            <Button size="sm">
-              <Plus className="size-4" /> 创建工单
+            <Button size="sm" asChild>
+              <Link href="/dms/service/create">
+                <Plus className="size-4" /> 创建工单
+              </Link>
             </Button>
           </>
         }
