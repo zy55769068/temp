@@ -27,11 +27,11 @@ function applyPaletteVars(palette: Palette, mode: Mode) {
   const c = palette[mode]
   const root = document.documentElement
 
-  // Sidebar: keep sidebar visually "stronger" than surface in both modes.
-  // Light mode -> use foreground (deep) as sidebar bg with light text.
-  // Dark mode  -> use surface (already dark) as sidebar bg with regular fg text.
-  const sidebarBg = mode === "light" ? c.fg : c.surface
-  const sidebarFg = mode === "light" ? c.bg : c.fg
+  // Sidebar: follows main theme colors for cohesive appearance.
+  // Light mode -> use a subtle tinted surface for sidebar bg with dark text.
+  // Dark mode  -> use surface (already dark) as sidebar bg with light text.
+  const sidebarBg = mode === "light" ? c.surface : c.surface
+  const sidebarFg = mode === "light" ? c.fg : c.fg
 
   const tokens: Record<string, string> = {
     // Base surfaces
@@ -59,14 +59,16 @@ function applyPaletteVars(palette: Palette, mode: Mode) {
     "--input": c.border,
     "--ring": c.primary,
 
-    // Sidebar tokens (used by sidebar.tsx)
+    // Sidebar tokens (used by sidebar.tsx) - follows main theme
     "--sidebar": sidebarBg,
     "--sidebar-foreground": sidebarFg,
-    "--sidebar-primary": c.accent,
-    "--sidebar-primary-foreground": c.accentFg,
-    "--sidebar-accent": `color-mix(in oklab, ${sidebarBg} 84%, ${sidebarFg})`,
+    "--sidebar-primary": c.primary,
+    "--sidebar-primary-foreground": c.primaryFg,
+    "--sidebar-accent": mode === "light" 
+      ? `color-mix(in oklab, ${c.bg} 50%, ${c.primary} 8%)`
+      : `color-mix(in oklab, ${sidebarBg} 84%, ${sidebarFg})`,
     "--sidebar-accent-foreground": sidebarFg,
-    "--sidebar-border": `color-mix(in oklab, ${sidebarBg} 80%, ${sidebarFg})`,
+    "--sidebar-border": c.border,
     "--sidebar-ring": c.primary,
 
     // Chart palette derived from primary + accent for visual cohesion
